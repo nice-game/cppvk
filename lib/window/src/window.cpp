@@ -1,12 +1,25 @@
 #include "window.h"
+#include "lib/util/src/log.h"
+#define UNICODE
+#define WIN32_LEAN_AND_MEAN
+#include "Windows.h"
+#include <codecvt>
+#include <locale>
+#include <string>
 
 using namespace std;
 
 const auto CLASS_NAME = L"vkWindow";
 
-thread_local Opt<Event> EVENT = None();
+thread_local bool KNOWN_EVENT = false;
+thread_local Event EVENT = {};
 
-wstring getLastErrorMessage() {
+struct Window {
+	HWND hwnd;
+	bool destroyed;
+};
+
+string getLastErrorMessage() {
 	auto err = GetLastError();
 	LPWSTR buf = nullptr;
 	size_t size = FormatMessage(
@@ -15,18 +28,56 @@ wstring getLastErrorMessage() {
 	);
 	wstring message(buf, size);
 	LocalFree(buf);
-	return message;
+	return wstring_convert<codecvt_utf8<wchar_t>, wchar_t>().to_bytes(message);
 }
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 	switch (uMsg) {
-		case WM_CLOSE: EVENT = Some(Event::Close);
+		case WM_CLOSE:
+			KNOWN_EVENT = true;
+			EVENT = Event::Close;
+
+			auto window = (Window*)GetWindowLongPtr(hwnd, GWLP_USERDATA);
+			window->destroyed = true;
+
+			break;
 	}
 
 	return DefWindowProc(hwnd, uMsg, wParam, lParam);
 }
 
-void EventsLoop::run(function<ControlFlow(Event)> cb) {
+Window* ngCreateWindow() {
+	auto hInstance = GetModuleHandle(nullptr);
+
+	WNDCLASS wc = {};
+	wc.lpfnWndProc = WindowProc;
+	wc.hInstance = hInstance;
+	wc.lpszClassName = CLASS_NAME;
+
+	if (!RegisterClass(&wc)) DIE(getLastErrorMessage().c_str());
+
+	HWND hwnd = CreateWindowEx(
+		0, CLASS_NAME, L"window", WS_OVERLAPPEDWINDOW,
+		CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+		nullptr, nullptr, hInstance, nullptr
+	);
+	if (!hwnd) DIE(getLastErrorMessage().c_str());
+
+	ShowWindow(hwnd, SW_SHOW);
+
+	auto ret = new Window { hwnd };
+	SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)ret);
+	return ret;
+}
+
+void ngDestroyWindow(Window* window) {
+	if (!window->destroyed) {
+		if (!DestroyWindow(window->hwnd)) DIE(getLastErrorMessage().c_str());
+	}
+	delete window;
+}
+
+void ngEventsLoopRun(ControlFlow(*cb)(Event)) {
 	MSG msg = {};
 	ControlFlow flow = ControlFlow::Poll;
 	while (true) {
@@ -43,30 +94,12 @@ void EventsLoop::run(function<ControlFlow(Event)> cb) {
 		if (found_msg) {
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
+
+			if (KNOWN_EVENT) {
+				flow = cb(EVENT);
+			}
+		} else {
+			flow = cb(Event::EventsCleared);
 		}
-		flow = cb(EVENT.take().unwrap_or(Event::EventsCleared));
 	}
-}
-
-Result<Window, wstring> Window::create() {
-	auto hInstance = GetModuleHandle(nullptr);
-
-	WNDCLASS wc = {};
-	wc.lpfnWndProc = WindowProc;
-	wc.hInstance = hInstance;
-	wc.lpszClassName = CLASS_NAME;
-
-	auto res = RegisterClass(&wc);
-	if (!res) return Err(getLastErrorMessage());
-
-	HWND hwnd = CreateWindowEx(
-		0, CLASS_NAME, L"window", WS_OVERLAPPEDWINDOW,
-		CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
-		nullptr, nullptr, hInstance, nullptr
-	);
-	if (!hwnd) return Err(getLastErrorMessage());
-
-	ShowWindow(hwnd, SW_SHOW);
-
-	return Ok(Window { hwnd });
 }

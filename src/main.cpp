@@ -1,16 +1,21 @@
-#include <iostream>
 #include "lib/window/src/window.h"
+#include <iostream>
 
 using namespace std;
 
+ControlFlow cb(Event event) {
+	switch (event) {
+		case Event::Close: return ControlFlow::Exit;
+		default: return ControlFlow::Wait;
+	}
+}
+
 int main() {
-	auto window = Window::create();
-	// I'll probably have to pass an EventsLoop instance to Window::create() later, but this works for now
-	EventsLoop().run([](auto event) {
-		switch (event) {
-			case Event::Close: return ControlFlow::Exit;
-			default: return ControlFlow::Poll;
-		}
-	});
+	auto window = ngCreateWindow();
+
+	ngEventsLoopRun(cb);
+
+	ngDestroyWindow(window);
+
 	return 0;
 }

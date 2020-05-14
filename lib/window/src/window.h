@@ -1,7 +1,4 @@
-#include "lib/util/src/result.h"
-#include "os.h"
-#include <functional>
-#include <string>
+#pragma once
 
 enum ControlFlow {
 	Exit,
@@ -14,12 +11,9 @@ enum Event {
 	EventsCleared,
 };
 
-struct EventsLoop {
-	void run(std::function<ControlFlow(Event)> cb);
-};
+struct Window;
 
-struct Window {
-	HWND hwnd;
+Window* ngCreateWindow();
+void ngDestroyWindow(Window* window);
 
-	static Result<Window, std::wstring> create();
-};
+void ngEventsLoopRun(ControlFlow(*cb)(Event));
