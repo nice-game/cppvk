@@ -1,15 +1,11 @@
 #include "window.h"
 #include "lib/util/src/log.h"
-#define UNICODE
-#define WIN32_LEAN_AND_MEAN
-#include "Windows.h"
+#include "lib/util/src/os.h"
 #include <codecvt>
 #include <locale>
 #include <string>
 
 using namespace std;
-
-const auto CLASS_NAME = L"vkWindow";
 
 thread_local bool KNOWN_EVENT = false;
 thread_local Event EVENT = {};
@@ -49,15 +45,16 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 Window* ngCreateWindow() {
 	auto hInstance = GetModuleHandle(nullptr);
 
+	auto className = L"vkWindow";
+
 	WNDCLASS wc = {};
 	wc.lpfnWndProc = WindowProc;
 	wc.hInstance = hInstance;
-	wc.lpszClassName = CLASS_NAME;
-
+	wc.lpszClassName = className;
 	if (!RegisterClass(&wc)) DIE(getLastErrorMessage().c_str());
 
 	HWND hwnd = CreateWindowEx(
-		0, CLASS_NAME, L"window", WS_OVERLAPPEDWINDOW,
+		0, className, L"window", WS_OVERLAPPEDWINDOW,
 		CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
 		nullptr, nullptr, hInstance, nullptr
 	);
